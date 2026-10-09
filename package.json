@@ -1,0 +1,37 @@
+{
+  "name": "kskills",
+  "version": "0.2.6",
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-force-exit test/*.test.mjs"
+  },
+  "bin": {
+    "kskills": "bin/kskills.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "AGENTS.md",
+    "README.md",
+    "_template/",
+    "app/",
+    "bin/",
+    "skills/"
+  ],
+  "description": "zero-dep skill farm CLI for coding agents — install/update/project skills & command projections",
+  "keywords": [
+    "agent",
+    "skills",
+    "cli",
+    "claude",
+    "skill-farm",
+    "coding-agent",
+    "projections"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaos-works/kskills.git"
+  }
+}
