@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kskills</title>
+<style>
+  :root { --bg:#101418; --fg:#d7dde3; --mut:#8b98a5; --acc:#4da3ff; --ok:#3fbf6f; --bad:#ff6b6b; --line:#232b33; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  header { display:flex; gap:16px; align-items:center; padding:12px 20px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:2 }
+  h1 { font-size:15px; margin:0; letter-spacing:.5px }
+  input[type=search] { background:#0b0e11; border:1px solid var(--line); color:var(--fg); border-radius:6px; padding:6px 10px; width:280px; font:inherit }
+  button { background:#1a2027; border:1px solid var(--line); color:var(--fg); border-radius:6px; padding:5px 12px; font:inherit; cursor:pointer }
+  button:hover { border-color:var(--acc) }
+  button:disabled { opacity:.45; cursor:default }
+  main { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:0; height:calc(100vh - 54px) }
+  main > section { padding-bottom:64px } /* last row clears the viewport bottom */
+  table { border-collapse:collapse; width:100%; font-size:13px }
+  th, td { padding:5px 10px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap }
+  thead th { color:#b8c4cf; font-weight:500; font-size:14px; position:sticky; top:0; background:var(--bg); height:36px; z-index:3 }
+  th.name, td.name { position:sticky; left:0; background:var(--bg); max-width:220px; overflow:hidden; text-overflow:ellipsis }
+  thead th.name { z-index:4 }
+  td.name { cursor:pointer; color:var(--acc) }
+  td.kind { color:var(--mut) }
+  td.agents { color:var(--mut); max-width:260px; overflow:hidden; text-overflow:ellipsis }
+  tr:hover td { background:#141a20 }
+  tr.src th { position:sticky; top:36px; z-index:2; background:#0b0e11; color:#7fc0ff; font-weight:600; font-size:14.5px; height:38px; cursor:default; border-top:2px solid #2c3742 }
+  tr.src th .cnt { color:var(--mut); font-weight:400 }
+  tr.src button { font-size:11px; padding:2px 8px; margin-left:6px }
+  #rows td.name { padding-left:28px } /* group members sit under their source header */
+  th.desc, td.desc { max-width:none; white-space:normal; overflow:hidden; text-overflow:ellipsis; color:var(--mut); font-size:12.5px; vertical-align:middle }
+  td.desc { max-width:640px }
+  aside { border-left:1px solid var(--line); display:flex; flex-direction:column; min-height:0 }
+  #doc { height:60%; overflow:auto; padding:12px 16px; white-space:pre-wrap; font-size:12px; border-bottom:1px solid var(--line) }
+  #doc h3 { margin:0 0 8px; color:var(--acc); font-size:13px }
+  #log { flex:1; overflow:auto; padding:12px 16px; white-space:pre-wrap; color:var(--mut); font-size:12px }
+  #log .ok { color:var(--ok) } #log .err { color:var(--bad) }
+  .srcbar { display:flex; gap:8px; padding:10px 20px; border-bottom:1px solid var(--line); align-items:center }
+  .srcbar input { flex:1; background:#0b0e11; border:1px solid var(--line); color:var(--fg); border-radius:6px; padding:5px 10px; font:inherit }
+  #catlist { max-height:180px; overflow:auto; padding:6px 20px 10px; border-bottom:1px solid var(--line); font-size:12px }
+  #catlist label { display:block; padding:2px 0 }
+  #harnessbar { display:flex; flex-wrap:wrap; gap:4px 12px; padding:8px 20px; border-bottom:1px solid var(--line); font-size:12px; align-items:center }
+  #harnessbar label { display:inline-flex; gap:4px; align-items:center; cursor:pointer }
+  #harnessbar .trace { color:var(--mut) }
+  #harnessbar .shared { color:var(--mut); cursor:default }
+  #harnessbar .farm::after { content:' ⌂'; color:var(--mut) }
+  .spin { animation:s 1s linear infinite } @keyframes s { to { transform:rotate(360deg) } }
+</style>
+</head>
+<body>
+<header>
+  <h1>kskills</h1>
+  <input id="q" type="search" placeholder="검색: 이름 · 소스 · 에이전트">
+  <span id="count"></span>
+  <span style="flex:1"></span>
+  <button id="envbtn" title="공용 자격 .env 관리 — 키 현황·편집">⚙ env</button>
+  <button id="update" title="선택 소스만 갱신 — 선택 없으면 전체">⤓ update all</button>
+  <button id="power" title="kskills-app 종료" style="border-color:#5a2e2e;color:#ff8f8f">⏻</button>
+</header>
+<div id="harnessbar"></div>
+<div class="srcbar">
+  <select id="regsel" title="레지스트리 카탈로그 — 위계(리포 그룹)로 둘러본다"></select>
+  <input id="src" placeholder="카탈로그 소스 (owner/repo · ./dir · URL) — Enter">
+  <button id="browse" title="소스칸이 비었으면 선택 레지스트리를 연다">catalog</button>
+  <button id="install" disabled>install</button>
+</div>
+<div id="envpanel" style="display:none;position:fixed;inset:0;background:rgba(5,8,10,.72);z-index:9;align-items:center;justify-content:center">
+  <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;width:min(860px,92vw);max-height:88vh;display:flex;flex-direction:column">
+    <div style="display:flex;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)">
+      <b style="color:var(--acc)">⚙ env</b>
+      <span id="envpath" style="color:var(--mut);font-size:12px"></span>
+      <span style="flex:1"></span>
+      <button id="envsave">저장</button>
+      <button id="envclose">✕</button>
+    </div>
+    <div id="envkeys" style="padding:8px 16px;overflow:auto;max-height:30vh;font-size:12px"></div>
+    <textarea id="envraw" spellcheck="false" style="flex:1;resize:none;background:#0b0e11;border:none;border-top:1px solid var(--line);color:var(--fg);padding:12px 16px;font:12px/1.5 ui-monospace,Menlo,monospace;min-height:30vh"></textarea>
+  </div>
+</div>
+<div id="catlist" hidden></div>
+<main>
+  <section style="overflow:auto">
+    <table>
+      <thead><tr id="head"><th class="name">skill</th><th class="desc">description</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+  <aside>
+    <div id="doc"><h3>SKILL.md</h3><div id="docbody">스킬 이름을 클릭하면 본문이 표시됩니다</div></div>
+    <div id="log">— 액션 로그 —</div>
+  </aside>
+</main>
+<script type="module">
+const $ = (s) => document.querySelector(s)
+const logEl = $('#log'), rowsEl = $('#rows'), docEl = $('#docbody')
+let skills = [], agents = [], lock = 0, q = '', harnesses = [], farmFed = []
+const harnessPicks = new Set()
+let seeded = false // 하네스 기본 선택 시드는 정확히 1회 — 빈 집합은 "미시드"가 아니다
+
+const log = (msg, cls = '') => {
+  const d = document.createElement('div'); if (cls) d.className = cls
+  d.textContent = msg; logEl.prepend(d)
+}
+
+async function api(path, body) {
+  const r = await fetch(path, body ? { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) } : {})
+  const j = await r.json().catch(() => ({ error:r.status }))
+  if (r.status >= 500 || r.status === 401 || r.status === 403) log(`✗ ${path} ${r.status} ${j.error ?? ''}`, 'err')
+  return j
+}
+
+// 잡 경로(#9): 시작 응답 → /api/job 폴링 → 진행 라인 스트림 → 종료 시 result.
+// add·catalog·registry 의 git 클론은 자식 프로세스 — 서버 루프가 멈추지 않는다.
+async function runJob(path, body, { quiet = false } = {}) {
+  const start = await api(path, body)
+  if (!start.ok) { if (!quiet) log(`✗ ${start.error}`, 'err'); return start }
+  // 잡 정체성 바인딩 — 단일 슬롯이라 폴링 공백에 다른 잡이 들어오면 결과가
+  // 뒤섞인다(레이스). startedAt 이 내 잡이면 이어보고, 교체됐으면 실패 처리.
+  const mine = start.job?.startedAt
+  let seen = 0
+  for (;;) {
+    const { job } = await api('/api/job')
+    if (!job || job.startedAt !== mine) return { ok: false, error: '잡 슬롯이 교체됨 — 다시 시도하라', result: null, events: [] }
+    if (job.events) for (const l of job.events.slice(seen)) { if (!quiet) log(l); seen++ }
+    if (!job.running) return { ok: job.ok, error: job.error ?? null, result: job.result ?? null, events: job.events ?? [] }
+    await new Promise(r => setTimeout(r, 300))
+  }
+}
+
+async function refresh() {
+  const s = await api('/api/state')
+  if (!s.ok) { log(`state 실패: ${s.error}`, 'err'); return }
+  skills = s.skills; agents = s.agents; lock = s.lock; farmFed = s.farmFed ?? []
+  if (s.harnesses) { harnesses = s.harnesses; renderHarnesses() }
+  render()
+}
+
+let harnessExpanded = false // 토글 펼침 상태 — state 재로드(설치 등)에도 유지
+function renderHarnesses() {
+  const bar = $('#harnessbar'); bar.replaceChildren()
+  const first = !seeded; seeded = true // 명시 1회 시드 — 빈 선택(팜 전용 설치)을 원복하지 않는다
+  const t = document.createElement('span'); t.textContent = '설치 대상:'; t.className = 'shared'; bar.append(t)
+  // 이중 기준(#4): 시장 유명도가 '후보·순서'를 정하고(엔진 방출 순서 = farm →
+  // rank → 알파벳), 설치 감지가 '기본 체크'를 정한다. 정렬은 엔진을 따른다 —
+  // UI 가 규칙을 이중화하지 않는다. 바 = 시장 후보 + 흔적 행; 나머지는 토글.
+  const inBar = harnesses.filter(h => h.agent === 'agents' || h.rank !== null || h.defaultTarget || h.status !== 'absent') // defaultTarget(absent 포함) 은 핀 기본타깃 — 바에서 사라지면 꼬리 이중 제외로 표시·시드 불가(11차 P2)
+  // 표시 순서 = 시장 순위 우선 → 나머지 알파벳(farm·⌂ 추종자 포함, 예외 없음).
+  // farm(⌂) 체계 추종자(cline·warp·zed 등)는 전역 디렉터리가 farm 그 자체라
+  // 해제불가 고정 — 흔적 여부와 무관하게 전원(생략 없음).
+  const rankOf = new Map(harnesses.map(h => [h.agent, h.rank ?? 99]))
+  const farmRow = inBar.find(h => h.agent === 'agents') ?? { agent: 'agents' }
+  const followers = [...farmFed].sort((a, b) => a.localeCompare(b)).map(a => ({ agent: a, fixed: true }))
+  // 기본 체크 시드 = 감지(defaultTarget) 하네스 전수 — items 소속(바 표시 여부)과
+  // 무관하게 핀 기본타깃(KSKILLS_DEFAULT_AGENTS)까지 체크한다(11차 P2).
+  if (first) for (const h of harnesses) if (h.defaultTarget && h.agent !== 'agents' && !farmFed.includes(h.agent)) harnessPicks.add(h.agent) // ⌂ 추종자 핀 시드 누출 방지 — 요청 agents 배열 이중 패스(11차 재리뷰)
+  const items = [farmRow, ...followers, ...inBar.filter(h => h.agent !== 'agents' && !farmFed.includes(h.agent))]
+    .sort((a, b) => ((a.fixed || a.agent === 'agents' ? 99 : rankOf.get(a.agent) ?? 99) - (b.fixed || b.agent === 'agents' ? 99 : rankOf.get(b.agent) ?? 99)) || a.agent.localeCompare(b.agent))
+  for (const h of items) {
+    const lb = document.createElement('label')
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = h.agent
+    if (h.agent === 'agents' || h.fixed) { // farm 과 ⌂ 추종자 — always on, not a choice
+      cb.checked = true; cb.disabled = true; lb.className = 'shared farm'
+      lb.title = 'farm(~/.agents/skills) 공유 — 자동 공급'
+    } else {
+      // 기본 체크 = 감지(defaultTarget — 바이너리·앱번들), 흔적이 아니다(10차:
+      // installSkill 이 디렉터리를 만드므로 흔적 기준은 자기영속). UI 기본 = CLI add 기본.
+      cb.checked = harnessPicks.has(h.agent) // 시드는 아래 harnesses 전수 루프에서 — items 소속과 무관하게 핀 기본타깃까지 시드된다(11차 P2)
+      cb.onchange = () => { cb.checked ? harnessPicks.add(h.agent) : harnessPicks.delete(h.agent) }
+      if (h.status === 'trace' || h.status === 'absent') lb.className = 'trace' // absent = 미감지 시장후보
+      if (h.managed) lb.classList.add('farm')
+      lb.title = h.status === 'absent' ? '미감지 — 설치 시 디렉터리 생성' : `${h.dir}${h.managed ? ' — kskills farm' : ''}`
+    }
+    lb.append(cb, ` ${h.agent}`)
+    bar.append(lb)
+  }
+  // 비시장 롱테일도 -a 와 동일하게 선택 가능하게 — 엔진 계약(AGENT_TABLE 전체)을
+  // UI 가 따라잡는다. 기본은 접힘: 바는 시장 기준 중심을 유지한다.
+  const rest = agents.filter(a => a !== 'agents' && !farmFed.includes(a) && !harnesses.some(h => h.agent === a)).sort((a, b) => a.localeCompare(b)) // 비시장 꼬리 — ⌂ 추종자 제외, 유명도 데이터 없어 알파벳 결정론
+  if (rest.length) {
+    const more = document.createElement('button')
+    more.textContent = harnessExpanded ? `− ${rest.length}종 접기` : `＋ ${rest.length}종 더보기`
+    more.onclick = () => { harnessExpanded = !harnessExpanded; renderHarnesses() }
+    bar.append(more)
+    if (harnessExpanded) for (const a of rest) {
+      const lb = document.createElement('label'); lb.className = 'trace'
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = a
+      cb.checked = harnessPicks.has(a)
+      cb.onchange = () => { cb.checked ? harnessPicks.add(a) : harnessPicks.delete(a) }
+      lb.title = '비시장 하네스 — 체크 시 -a 와 동일하게 설치'
+      lb.append(cb, ` ${a}`)
+      bar.append(lb)
+    }
+  }
+}
+
+const shortSrc = (u) => u.replace(/^file:\/\//, '').replace(/\.git$/, '').replace(/\?.*/, '')
+const picked = new Set()
+const syncUpdateBtn = () => {
+  const b = $('#update')
+  if (b.disabled) return
+  b.textContent = picked.size ? `⤓ update (${picked.size})` : '⤓ update all'
+}
+
+function render() {
+  const f = skills.filter(x => !q || x.name.includes(q) || x.source.includes(q) || typeof x.description === 'string' && x.description.includes(q) || x.agents.some(a => a.includes(q)))
+  $('#count').textContent = `${f.length}/${skills.length} skills · ${agents.length} agents · ${lock} lock`
+  const bySrc = new Map()
+  for (const x of f) { if (!bySrc.has(x.source)) bySrc.set(x.source, []); bySrc.get(x.source).push(x) }
+  const frag = document.createDocumentFragment()
+  const mk = (tag, cls, text) => { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; return el }
+  for (const [src, items] of [...bySrc.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const head = mk('tr', 'src')
+    const th = mk('th')
+    th.colSpan = 5
+    const cb = mk('input'); cb.type = 'checkbox'; cb.className = 'srcpick'; cb.checked = picked.has(src)
+    cb.onchange = () => { cb.checked ? picked.add(src) : picked.delete(src); syncUpdateBtn() }
+    const label = mk('span', null, `${shortSrc(src)} `)
+    const cnt = mk('span', 'cnt', `(${items.length})`)
+    // kskills 종류(팜 내부 관리 행)의 source 는 캐시 상대 id(o__r/x) — 소스 문법이
+    // 아니라 ⤓/✕ 를 주면 갱신이 캐시를 파괴하고 제거는 불능이다. 이 그룹에선
+    // 소스 단위 버튼을 내놓지 않는다 (8차 리뷰).
+    const farmInternal = items.every(x => x.kind === 'kskills')
+    const su = mk('button', null, '⤓'); su.title = '이 소스만 갱신'
+    su.onclick = async () => { su.disabled = true; const r = await api('/api/update', { source: src }); if (!r.ok) { log(`✗ update ${shortSrc(src)}: ${r.error}`, 'err'); su.disabled = false; return } log(`⤓ ${shortSrc(src)} 갱신 시작`); pollBtnUntilDone(su, '⤓') }
+    const sr = mk('button', null, '✕ 소스 제거'); sr.title = '이 소스의 스킬 전체 제거'
+    sr.onclick = async () => { sr.disabled = true; const r = await api('/api/remove', { source: src }); r.result?.removed ? log(`✓ 소스 제거 ${shortSrc(src)} (${r.result.removed}종)`, 'ok') : log(`✗ 소스 제거 ${shortSrc(src)}: ${r.ok ? '제거된 항목 없음' : r.error}`, 'err'); r.events?.slice(0, 6).forEach(e => log('  ' + e)); await refresh() }
+    th.append(label, cnt); if (!farmInternal) { th.prepend(cb); th.append(su, sr) } // 팜내부는 cb 도 없다 — 배치 update 로 캐시 상대 id 가 흘러 캐시가 파괴된다 (9차)
+    for (const x of items) {
+      const tr = document.createElement('tr')
+      const name = mk('td', 'name', x.name); name.onclick = () => showDoc(x.name)
+      const desc = mk('td', 'desc', x.description || '')
+      tr.append(name, desc)
+      const act = document.createElement('td')
+      const rm = mk('button', null, 'remove')
+      rm.onclick = async () => { rm.disabled = true; const r = await api('/api/remove', { names:[x.name] }); r.result?.removed ? log(`✓ remove ${x.name}`, 'ok') : log(`✗ remove ${x.name}: ${r.ok ? '제거된 항목 없음' : r.error}`, 'err'); r.events?.slice(0,3).forEach(e => log('  ' + e)); await refresh() }
+      act.append(rm); tr.append(act); frag.append(tr)
+    }
+  }
+  rowsEl.replaceChildren(frag)
+}
+
+async function showDoc(name) {
+  const d = await api(`/api/skill/${encodeURIComponent(name)}`)
+  if (!d.ok) { docEl.textContent = `(문서 없음: ${d.error})`; return }
+  const meta = skills.find(x => x.name === name)
+  const head = meta ? `${meta.kind} · ${meta.agents.join(',')} · ${shortSrc(meta.source)}` : ''
+  docEl.replaceChildren()
+  const h = document.createElement('div'); h.style.cssText = 'color:var(--mut);font-size:11px;margin-bottom:6px'; h.textContent = head
+  const body = document.createElement('div'); body.style.whiteSpace = 'pre-wrap'; body.textContent = d.markdown
+  docEl.append(h, body)
+  docEl.parentElement.scrollTop = 0 // each skill starts at the top
+}
+
+$('#power').onclick = async () => {
+  const b = $('#power'); b.disabled = true; b.textContent = '…'
+  try { await fetch('/api/shutdown', { method: 'POST' }) } catch { /* server is going away — that IS success */ }
+  document.body.innerHTML = '<div style="display:flex;height:100vh;align-items:center;justify-content:center;color:var(--mut)">kskills-app stopped — 다시 켤 때: kskills</div>'
+}
+
+$('#q').oninput = (e) => { q = e.target.value.trim(); render() }
+function pollBtnUntilDone(btn, label) {
+  const timer = setInterval(async () => {
+    const st = await api('/api/state')
+    if (!st.job || st.job.running) return
+    clearInterval(timer)
+    st.job.ok ? log('✓ 소스 갱신 완료', 'ok') : log(`✗ 소스 갱신: ${st.job.error ?? '실패'}`, 'err')
+    btn.disabled = false; btn.textContent = label
+    await refresh()
+  }, 1000)
+}
+
+let polling = null
+function pollJob(btn, label = '', onDone = null) {
+  let seen = 0
+  polling = setInterval(async () => {
+    const st = await api('/api/state')
+    if (!st.job) return
+    for (const e of st.job.events.slice(seen)) log(e)
+    seen = st.job.events.length
+    if (btn) btn.textContent = `…실행 중 (${seen})`
+    if (!st.job.running) {
+      clearInterval(polling); polling = null
+      st.job.ok ? log(`✓ update${label} 완료`, 'ok') : log(`✗ update${label}: ${st.job.error ?? '실패'}`, 'err')
+      if (onDone) onDone() // clear picks BEFORE the label resync
+      if (btn) { btn.disabled = false; syncUpdateBtn() }
+      await refresh()
+    }
+  }, 1000)
+}
+$('#update').onclick = async () => {
+  const b = $('#update'); b.disabled = true; b.textContent = '…실행 중'
+  const sources = [...picked]
+  const r = await api('/api/update', sources.length ? { sources } : {})
+  if (!r.ok && r.error) { log(`✗ update: ${r.error}`, 'err'); b.disabled = false; syncUpdateBtn(); return }
+  log(sources.length ? `⤓ 선택 ${sources.length}개 소스 갱신 시작` : '⤓ 전체 갱신 시작 — 진행 로그가 순차 표시됩니다')
+  pollJob(b, sources.length ? ` (${sources.length}개 소스)` : '', () => { picked.clear(); document.querySelectorAll('.srcpick').forEach(c => c.checked = false) })
+}
+
+$('#src').onkeydown = async (e) => { if (e.key === 'Enter') $('#browse').click() }
+let regName = '' // '' = 소스 직접 브라우징, 그 외 = 현재 레지스트리 이름
+async function loadRegistries() {
+  const r = await runJob('/api/registry', undefined, { quiet: true }) // 부트 로드 — 조용히
+  if (!r.ok || !r.result?.registries?.length) return
+  const sel = $('#regsel')
+  for (const g of r.result.registries) {
+    const o = document.createElement('option'); o.value = g.name; o.textContent = `${g.default ? '★ ' : ''}${g.name}`
+    if (g.default) o.selected = true
+    sel.append(o)
+  }
+}
+async function browseRegistry(name) {
+  const r = await runJob(`/api/registry/${encodeURIComponent(name)}`)
+  if (!r.ok) { log(`✗ registry ${name}: ${r.error}`, 'err'); return }
+  const reg = r.result
+  regName = name
+  const box = $('#catlist'); box.hidden = false; box.replaceChildren()
+  const groups = new Map()
+  for (const e of reg.entries) {
+    if (!groups.has(e.repo)) groups.set(e.repo, [])
+    groups.get(e.repo).push(e)
+  }
+  for (const [repo, entries] of groups) {
+    const h = document.createElement('div'); h.className = 'grp'
+    // 리포 전체 설치 — 엔진 multi-add 로 N 항목을 1 add(1 git 캐시 패스)에 태운다
+    const all = document.createElement('button'); all.textContent = `＋ ${entries.length}종 전체`
+    all.onclick = async () => {
+      all.disabled = true
+      const agents = ['agents', ...harnessPicks]
+      const r = await runJob('/api/add', { sources: entries.map(e => `${e.name}@${regName}`), agents })
+      r.ok ? log(`✓ add ${repo} 전체 (${entries.length}종)`, 'ok') : log(`✗ add ${repo}: ${r.error}`, 'err')
+      await refresh(); all.disabled = false
+    }
+    h.append(`${repo} — ${entries.length} `, all)
+    box.append(h)
+    for (const it of entries) {
+      const lb = document.createElement('label')
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = it.name
+      lb.append(cb, ` ${it.name} — ${String(it.description ?? '').slice(0, 70)}`)
+      cb.onchange = () => { $('#install').disabled = ![...box.querySelectorAll('input:checked')].length }
+      box.append(lb)
+    }
+  }
+  log(`registry ${name}: ${reg.entries.length}종 · ${groups.size} 리포`)
+}
+$('#browse').onclick = async () => {
+  const source = $('#src').value.trim()
+  if (source) { regName = ''; return browseSource(source) }
+  const pick = $('#regsel').value
+  if (pick) return browseRegistry(pick)
+}
+async function browseSource(source) {
+  const r = await runJob('/api/catalog', { source })
+  if (!r.ok) { log(`✗ catalog ${source}: ${r.error}`, 'err'); return }
+  regName = ''
+  const box = $('#catlist'); box.hidden = false; box.replaceChildren()
+  for (const it of r.result) {
+    const lb = document.createElement('label')
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = it.name
+    lb.append(cb, ` ${it.name}${it.family ? ` (${it.family})` : ''} — ${String(it.description ?? '').slice(0, 70)}`)
+    cb.onchange = () => { $('#install').disabled = ![...box.querySelectorAll('input:checked')].length }
+    box.append(lb)
+  }
+  log(`catalog ${source}: ${r.result.length}종`)
+}
+$('#install').onclick = async () => {
+  const sel = [...$('#catlist').querySelectorAll('input:checked')].map(x => x.value)
+  if (!sel.length) return
+  const b = $('#install'); b.disabled = true // 진행 중 이중 제출 차단 — 잡 단일 슬롯이 서버에서도 게이트한다
+  // 공용 팜('agents')은 상시 대상 — 명시 -a 가 defaultAgents 를 대체하므로 요청에
+  // 반드시 포함한다(빠지면 omp 투영의 급원이 끊긴다). harnessPicks 는 'agents' 를
+  // 절대 담지 않는다(비활성 체크박스는 시드되지 않는다).
+  const agents = ['agents', ...harnessPicks]
+  if (regName) {
+    // 레지스트리 위계 설치 — multi-add 로 N 소스를 1 add 에 (1 git 캐시 패스·투영 배치)
+    const r = await runJob('/api/add', { sources: sel.map(s => `${s}@${regName}`), agents })
+    r.ok ? log(`✓ add ${sel.length} skill(s)`, 'ok') : log(`✗ add: ${r.error}`, 'err')
+  } else {
+    const source = $('#src').value.trim()
+    if (!source) return
+    const r = await runJob('/api/add', { source, skills: sel, agents })
+    r.ok ? log(`✓ add ${sel.join(', ')}`, 'ok') : log(`✗ add: ${r.error}`, 'err')
+  }
+  await refresh(); b.disabled = !![...$('#catlist').querySelectorAll('input:checked')].length
+}
+
+// --- env panel: 공용 자격 .env 관리 --------------------------------------------
+async function renderEnv() {
+  const st = await api('/api/env')
+  if (!st.ok) { log(`env 상태 실패: ${st.error}`, 'err'); return null }
+  $('#envpath').textContent = `${st.path}${st.exists ? '' : ' (없음 — 새로 생성됨)'}`
+  const box = $('#envkeys'); box.replaceChildren()
+  for (const k of st.keys) {
+    const row = document.createElement('div')
+    const dot = document.createElement('span'); dot.textContent = k.present ? '✓' : '✗'; dot.style.color = k.present ? 'var(--ok)' : 'var(--bad)'
+    const nm = document.createElement('span'); nm.textContent = ` ${k.name} `; nm.style.color = 'var(--fg)'
+    const rb = document.createElement('span'); rb.textContent = k.requiredBy.length ? `← ${k.requiredBy.join(', ')}` : ''; rb.style.color = 'var(--mut)'
+    row.append(dot, nm, rb); box.append(row)
+  }
+  if (!st.keys.length) box.textContent = '선언된 키·스킬 없음 — 아래 편집기로 채운다'
+  return st
+}
+$('#envbtn').onclick = async () => {
+  const p = $('#envpanel'); p.style.display = 'flex'
+  const st = await renderEnv()
+  const raw = await api('/api/env?raw=1')
+  if (!raw.ok) { $('#envclose').onclick(); log(`✗ .env 열기 실패: ${raw.error} — 저장하면 내용이 절단된다`, 'err'); return }
+  $('#envraw').value = raw.content ?? ''
+}
+$('#envclose').onclick = () => { $('#envpanel').style.display = 'none' }
+$('#envpanel').onclick = (e) => { if (e.target === $('#envpanel')) $('#envclose').onclick() }
+$('#envsave').onclick = async () => {
+  const b = $('#envsave'); b.disabled = true; b.textContent = '…'
+  const r = await api('/api/env', { content: $('#envraw').value })
+  b.disabled = false; b.textContent = '저장'
+  if (!r.ok) { log(`✗ .env 저장: ${r.error}`, 'err'); return }
+  const miss = r.missingSkills?.length
+  log(miss ? `✓ .env 저장 — 선언 스킬 ${miss}종 키 누락 (${r.missingSkills.slice(0, 3).join(', ')}${r.missingSkills.length > 3 ? '…' : ''})` : '✓ .env 저장 — 선언 키 충족', miss ? '' : 'ok')
+  await renderEnv()
+}
+
+refresh()
+loadRegistries()
+</script>
+</body>
+</html>
