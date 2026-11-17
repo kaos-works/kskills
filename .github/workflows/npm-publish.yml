@@ -1,0 +1,19 @@
+name: npm stage publish
+on:
+  push:
+    tags: ['v*']
+permissions:
+  id-token: write  # OIDC — npm trusted publishing (npmjs 패키지 설정에 이 리포·워크플로 등록 필요)
+  contents: read
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false  # 발행 빌드는 캐시 없이
+      # zero-dep 단일 파일 — install·build·test 없이 감사를 통과한 미러 트리 그대로 스테이징
+      - run: npm stage publish --access public
